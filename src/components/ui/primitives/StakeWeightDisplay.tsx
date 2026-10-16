@@ -71,8 +71,12 @@ function getBestUnit(weiAmount: bigint): string {
   if (weiAmount === 0n) return 'wei';
   
   // Find the largest unit where weiAmount >= unit rate
-  // Sort units by their rate (largest to smallest) - convert bigint to number for sorting
-  const units = Object.keys(UNIT_RATES).sort((a, b) => Number(UNIT_RATES[b]) - Number(UNIT_RATES[a]));
+  // Sort units by their rate using exact BigInt comparisons (largest to smallest)
+  const units = Object.keys(UNIT_RATES).sort((a, b) => {
+    const rateA = UNIT_RATES[a];
+    const rateB = UNIT_RATES[b];
+    return rateB < rateA ? -1 : rateB > rateA ? 1 : 0;
+  });
   
   for (const unit of units) {
     const rate = UNIT_RATES[unit];
