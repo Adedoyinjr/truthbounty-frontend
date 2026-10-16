@@ -6,29 +6,39 @@ import { ConfidenceMeter } from '@/components/ui/primitives/ConfidenceMeter';
 import { OutcomeBadge } from '@/components/ui/primitives/OutcomeBadge';
 import { StakeWeightDisplay } from '@/components/ui/primitives/StakeWeightDisplay';
 
+/**
+ * Map settlement projection to UI outcome kind - authoritative protocol state, not derived.
+ * 
+ * When settlement is null/not settled: outcome is 'inconclusive' (not determined)
+ * When settlement.isFinalized is true: outcome is 'verified' (authoritatively determined)
+ * When settlement.isFinalized is false: outcome is 'provisional' (awaiting finality)
+ */
+function mapSettlementToOutcomeKind(
+  settlement: ClaimDetailProjection['settlement'],
+  verifications: ClaimDetailProjection['verifications']
+): 'verified' | 'disputed' | 'rejected' | 'inconclusive' | 'provisional' {
+  // Use canonical settlement projection for outcome - do NOT derive from vote counts
+  if (settlement.isFinalized) {
+    return 'verified';
+  }
+  if (!settlement.isFinalized && settlement.settledAt !== null) {
+    return 'provisional';
+  }
+  return 'inconclusive';
+}
+
 export interface ClaimVerificationsProps {
   claim: ClaimDetailProjection;
 }
 
 export function ClaimVerifications({ claim }: ClaimVerificationsProps) {
-  const { verifications, voteCounts, confidenceScore } = claim;
-  const totalVotes = voteCounts.support + voteCounts.reject;
-  const supportPercentage = totalVotes > 0 ? (voteCounts.support / totalVotes) * 100 : 0;
-  const rejectPercentage = totalVotes > 0 ? (voteCounts.reject / totalVotes) * 100 : 0;
-
-  // Determine outcome based on vote counts
-  let outcomeKind: 'verified' | 'disputed' | 'rejected' | 'inconclusive' | 'provisional' = 'inconclusive';
-  if (totalVotes > 0) {
-    if (voteCounts.support > voteCounts.reject) {
-      outcomeKind = 'verified';
-    } else if (voteCounts.reject > voteCounts.support) {
-      outcomeKind = 'rejected';
-    } else {
-      outcomeKind = 'disputed';
-    }
-  }
-  // Check if outcome is provisional (not finalized)
-  const isProvisional = verifications.some((v) => !v.finalizedAt);
+  const { verifications, voteCounts, confidenceScore, settlement } = claim;
+  
+  // Use canonical projected outcome from settlement - do NOT derive from vote counts
+  const outcomeKind = mapSettlementToOutcomeKind(settlement, verifications);
+  
+  // Check if outcome is provisional (not finalized) using settlement.isFinalized
+  const isProvisional = !settlement.isFinalized && settlement.settledAt !== null;
 
   return (
     <div className="space-y-4 pt-4 border-t border-[#232329]">
@@ -37,7 +47,7 @@ export function ClaimVerifications({ claim }: ClaimVerificationsProps) {
         kind={outcomeKind}
         provisional={isProvisional}
         source="Canonical Projection"
-        determinedAt={verifications[0]?.timestamp}
+        determinedAt={settlement.settledAt}
       />
 
       {/* Vote Counts & Stake Weights */}
@@ -46,7 +56,7 @@ export function ClaimVerifications({ claim }: ClaimVerificationsProps) {
           Verification Breakdown
         </h2>
 
-        {totalVotes > 0 ? (
+        {voteCounts.support + voteCounts.reject > 0 ? (
           <>
             <StakeWeightDisplay
               supporting={{
@@ -86,7 +96,7 @@ export function ClaimVerifications({ claim }: ClaimVerificationsProps) {
             value={confidenceScore}
             label="Confidence Score"
             source="Canonical Projection"
-            computedAt={verifications[0]?.timestamp}
+            computedAt={settlement.settledAt}
             provisional={isProvisional}
             showValue={true}
             showBandLabel={true}

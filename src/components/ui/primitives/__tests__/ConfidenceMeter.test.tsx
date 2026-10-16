@@ -101,13 +101,10 @@ describe('ConfidenceMeter', () => {
   });
 
   describe('Data table', () => {
-    it('renders a reference table with confidence bands', () => {
-      render(<ConfidenceMeter value={75} label="Confidence" />);
-      const table = screen.getByTestId('confidence-bands-table');
-      expect(table).toBeInTheDocument();
-      expect(screen.getByText('Low')).toBeInTheDocument();
-      expect(screen.getByText('Medium')).toBeInTheDocument();
-      expect(screen.getByText('High')).toBeInTheDocument();
+    it('does not render hidden table', () => {
+      const { queryByTestId } = render(<ConfidenceMeter value={75} label="Confidence" />);
+      const table = queryByTestId('confidence-bands-table');
+      expect(table).toBeNull();
     });
   });
 

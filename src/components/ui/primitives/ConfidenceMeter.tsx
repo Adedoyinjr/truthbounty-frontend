@@ -234,34 +234,34 @@ export function ConfidenceMeter({
         </div>
       )}
 
-      <table
-        id={tableId}
-        data-testid="confidence-bands-table"
-        className="w-full text-xs text-muted-foreground border-t border-border pt-2"
-        aria-hidden="true"
-        role="table"
-        aria-label="Confidence bands reference"
-      >
-        <thead>
-          <tr>
-            <th scope="col" className="text-left pb-1">Band</th>
-            <th scope="col" className="text-right pb-1">Range</th>
-          </tr>
-        </thead>
-        <tbody>
-          {bands.map((band, idx) => (
-            <tr key={idx} className={cn('border-t border-border/50', band === currentBand && 'font-medium')}>
-              <td className="py-1 flex items-center gap-1">
-                <span aria-hidden="true">{band.icon}</span>
-                <span>{band.label}</span>
-              </td>
-              <td className="py-1 text-right font-mono tabular-nums">
-                {band.min}% – {band.max}%
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {(showBandLabel || !source) && currentBand && !isUnknown && (
+        <div
+          id={descId}
+          className={cn('flex items-center gap-1.5 text-xs', TONE_STYLES[currentBand.tone].text)}
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <span aria-hidden="true">{currentBand.icon}</span>
+          <span>{currentBand.label} confidence</span>
+        </div>
+      )}
+
+      {(source || computedAt) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {source && (
+            <span className="flex items-center gap-1">
+              <span aria-hidden="true">📊</span>
+              <span>Source: {source}</span>
+            </span>
+          )}
+          {computedAt && (
+            <time dateTime={computedAt} className="flex items-center gap-1">
+              <span aria-hidden="true">🕐</span>
+              <span>Computed {new Date(computedAt).toLocaleString()}</span>
+            </time>
+          )}
+        </div>
+      )}
     </div>
   );
 }

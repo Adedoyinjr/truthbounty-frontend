@@ -57,13 +57,77 @@ function parseWeight(value: string | bigint | number | null): bigint {
   return BigInt(str);
 }
 
+/** Unit conversion rates in wei */
+const UNIT_RATES: Record<string, bigint> = {
+  wei: 1n,
+  gwei: 1_000_000_000n,
+  szabo: 1_000_000_000_000n,
+  finney: 1_000_000_000_000_000n,
+  ether: 1_000_000_000_000_000_000n,
+};
+
+/** Determine the appropriate unit for a given wei amount */
+function getBestUnit(weiAmount: bigint): string {
+  if (weiAmount === 0n) return 'wei';
+  
+  // Find the largest unit where weiAmount >= unit rate
+  // Sort units by their rate (largest to smallest) - convert bigint to number for sorting
+  const units = Object.keys(UNIT_RATES).sort((a, b) => Number(UNIT_RATES[b]) - Number(UNIT_RATES[a]));
+  
+  for (const unit of units) {
+    const rate = UNIT_RATES[unit];
+    if (weiAmount >= rate) {
+      return unit;
+    }
+  }
+  
+  return 'wei';
+}
+
+/** Format wei amount to appropriate unit with lossless precision */
 function formatWeightDefault(value: string | bigint | number | null, unit: string): string {
   const parsed = parseWeight(value);
-  if (parsed === 0n) return `0 ${unit}`;
-  const eth = Number(parsed) / 1e18;
-  if (eth >= 1) return `${eth.toFixed(4)} ${unit}`;
-  if (eth >= 0.001) return `${eth.toFixed(6)} ${unit}`;
-  return `${Number(parsed)} wei`;
+  if (parsed === 0n) {
+    return `0 ${unit}`;
+  }
+  
+  // If custom unit provided, use it
+  if (unit !== 'wei' && unit in UNIT_RATES) {
+    const unitRate = UNIT_RATES[unit];
+    const weiValue = parsed;
+    
+    // Calculate whole units and remainder
+    const whole = weiValue / unitRate;
+    const remainder = weiValue % unitRate;
+    
+    if (remainder === 0n) {
+      return `${whole.toString()} ${unit}`;
+    }
+    
+    // For fractional values, show full precision without scientific notation
+    const fractionalStr = remainder.toString().padStart(unitRate.toString().length, '0');
+    return `${whole.toString()}.${fractionalStr} ${unit}`;
+  }
+  
+  // For wei, just show the raw amount
+  if (unit === 'wei') {
+    return `${parsed.toString()} wei`;
+  }
+  
+  // Auto-select best unit for display
+  const bestUnit = getBestUnit(parsed);
+  const bestUnitRate = UNIT_RATES[bestUnit];
+  
+  const whole = parsed / bestUnitRate;
+  const remainder = parsed % bestUnitRate;
+  
+  if (remainder === 0n) {
+    return `${whole.toString()} ${bestUnit}`;
+  }
+  
+  // For fractional values, show full precision without scientific notation
+  const fractionalStr = remainder.toString().padStart(bestUnitRate.toString().length, '0');
+  return `${whole.toString()}.${fractionalStr} ${bestUnit}`;
 }
 
 export function StakeWeightDisplay({
@@ -86,12 +150,17 @@ export function StakeWeightDisplay({
   const totalParsed = total !== undefined ? parseWeight(total) : supportingParsed + opposingParsed;
   const quorumParsed = quorum !== undefined ? parseWeight(quorum) : null;
 
-  const supportingPct = totalParsed > 0n ? Number((supportingParsed * 10000n) / totalParsed) / 100 : 0;
-  const opposingPct = totalParsed > 0n ? Number((opposingParsed * 10000n) / totalParsed) / 100 : 0;
+  const supportingPctInt = totalParsed > 0n ? Math.round((Number(supportingParsed * 10000n) * 10) / Number(totalParsed)) : 0;
+  const opposingPctInt = totalParsed > 0n ? Math.round((Number(opposingParsed * 10000n) * 10) / Number(totalParsed)) : 0;
+  const supportingPctDisplay = (supportingPctInt / 10).toFixed(1);
+  const opposingPctDisplay = (opposingPctInt / 10).toFixed(1);
+  
+  // Quorum calculation
   const quorumReached = quorumParsed !== null && totalParsed >= quorumParsed;
-  const quorumPct = quorumParsed !== null && totalParsed > 0n
-    ? Number((totalParsed * 10000n) / quorumParsed) / 100
+  const quorumPctInt = quorumParsed !== null && totalParsed > 0n 
+    ? Math.round((Number(totalParsed * 10000n) * 10) / Number(quorumParsed))
     : null;
+  const quorumPctDisplay = quorumPctInt !== null ? (quorumPctInt / 10).toFixed(1) : null;
 
   const regionId = React.useId();
   const tableId = React.useId();
@@ -125,14 +194,14 @@ export function StakeWeightDisplay({
           <span className={cn('flex items-center gap-1', supportingStyle.text)}>
             <span aria-hidden="true">{supporting.icon}</span>
             <span className="font-mono tabular-nums">{formatWeight(supporting.value, supporting.unit)}</span>
-            <span className="text-xs text-muted-foreground">({supportingPct.toFixed(1)}%)</span>
+            <span className="text-xs text-muted-foreground">({supportingPctDisplay}%)</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
           <span className={cn('flex items-center gap-1', opposingStyle.text)}>
             <span aria-hidden="true">{opposing.icon}</span>
             <span className="font-mono tabular-nums">{formatWeight(opposing.value, opposing.unit)}</span>
-            <span className="text-xs text-muted-foreground">({opposingPct.toFixed(1)}%)</span>
+            <span className="text-xs text-muted-foreground">({opposingPctDisplay}%)</span>
           </span>
         </div>
         {quorumParsed !== null && (
@@ -177,19 +246,19 @@ export function StakeWeightDisplay({
                 <span aria-hidden="true">{supporting.icon}</span>
                 {supporting.label}
               </span>
-              <span className="font-mono tabular-nums">{formatWeight(supporting.value, supporting.unit)} ({supportingPct.toFixed(1)}%)</span>
+              <span className="font-mono tabular-nums">{formatWeight(supporting.value, supporting.unit)} ({supportingPctDisplay}%)</span>
             </div>
             <div
               role="progressbar"
               aria-label={`${supporting.label} weight share`}
-              aria-valuenow={Math.round(supportingPct)}
+              aria-valuenow={Math.round((supportingPctInt * 10) / 10)}
               aria-valuemin={0}
               aria-valuemax={100}
               className="h-2 w-full overflow-hidden rounded-full bg-muted"
             >
               <div
                 className={cn('h-full transition-all duration-300', supportingStyle.bar)}
-                style={{ width: `${supportingPct}%` }}
+                style={{ width: `${Math.min(supportingPctInt, 1000)}%` }}
               />
             </div>
           </div>
@@ -200,19 +269,19 @@ export function StakeWeightDisplay({
                 <span aria-hidden="true">{opposing.icon}</span>
                 {opposing.label}
               </span>
-              <span className="font-mono tabular-nums">{formatWeight(opposing.value, opposing.unit)} ({opposingPct.toFixed(1)}%)</span>
+              <span className="font-mono tabular-nums">{formatWeight(opposing.value, opposing.unit)} ({opposingPctDisplay}%)</span>
             </div>
             <div
               role="progressbar"
               aria-label={`${opposing.label} weight share`}
-              aria-valuenow={Math.round(opposingPct)}
+              aria-valuenow={Math.round((opposingPctInt * 10) / 10)}
               aria-valuemin={0}
               aria-valuemax={100}
               className="h-2 w-full overflow-hidden rounded-full bg-muted"
             >
               <div
                 className={cn('h-full transition-all duration-300', opposingStyle.bar)}
-                style={{ width: `${opposingPct}%` }}
+                style={{ width: `${Math.min(opposingPctInt, 1000)}%` }}
               />
             </div>
           </div>
@@ -226,20 +295,20 @@ export function StakeWeightDisplay({
                 </span>
                 <span className="font-mono tabular-nums">
                   {formatWeight(totalParsed.toString(), supporting.unit)} / {formatWeight(quorumParsed.toString(), supporting.unit)}
-                  {quorumPct !== null && ` (${quorumPct.toFixed(1)}%)`}
+                  {quorumPctDisplay !== null && ` (${quorumPctDisplay}%)`}
                 </span>
               </div>
               <div
                 role="progressbar"
                 aria-label="Quorum progress"
-                aria-valuenow={quorumPct !== null ? Math.min(Math.round(quorumPct), 100) : 0}
+                aria-valuenow={quorumPctDisplay !== null ? Math.min(Math.round(parseFloat(quorumPctDisplay)), 100) : 0}
                 aria-valuemin={0}
                 aria-valuemax={100}
                 className="h-2 w-full overflow-hidden rounded-full bg-muted"
               >
                 <div
                   className={cn('h-full transition-all duration-300', quorumReached ? 'bg-success' : 'bg-warning')}
-                  style={{ width: `${quorumPct !== null ? Math.min(quorumPct, 100) : 0}%` }}
+                  style={{ width: `${quorumPctDisplay !== null ? Math.min(parseFloat(quorumPctDisplay), 100) : 0}%` }}
                 />
               </div>
               <p className={cn('text-xs mt-1', quorumReached ? 'text-success' : 'text-warning')}>
@@ -279,7 +348,7 @@ export function StakeWeightDisplay({
                 <span>{supporting.label}</span>
               </td>
               <td className="py-1 text-right font-mono tabular-nums">{formatWeight(supporting.value, supporting.unit)}</td>
-              <td className="py-1 text-right font-mono tabular-nums">{supportingPct.toFixed(1)}%</td>
+              <td className="py-1 text-right font-mono tabular-nums">{supportingPctDisplay}%</td>
             </tr>
             <tr className="border-t border-border/50">
               <td className="py-1 flex items-center gap-1">
@@ -287,7 +356,7 @@ export function StakeWeightDisplay({
                 <span>{opposing.label}</span>
               </td>
               <td className="py-1 text-right font-mono tabular-nums">{formatWeight(opposing.value, opposing.unit)}</td>
-              <td className="py-1 text-right font-mono tabular-nums">{opposingPct.toFixed(1)}%</td>
+              <td className="py-1 text-right font-mono tabular-nums">{opposingPctDisplay}%</td>
             </tr>
             <tr className="border-t border-border/50 font-medium">
               <td className="py-1">Total</td>
@@ -301,7 +370,7 @@ export function StakeWeightDisplay({
                   <span>Quorum Required</span>
                 </td>
                 <td className="py-1 text-right font-mono tabular-nums">{formatWeight(quorumParsed.toString(), supporting.unit)}</td>
-                <td className="py-1 text-right">{quorumPct !== null ? `${quorumPct.toFixed(1)}%` : '—'}</td>
+                <td className="py-1 text-right">{quorumPctDisplay !== null ? `${quorumPctDisplay}%` : '—'}</td>
               </tr>
             )}
           </tbody>

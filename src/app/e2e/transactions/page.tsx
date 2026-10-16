@@ -3,8 +3,8 @@ import { notFound } from 'next/navigation';
 export const dynamic = 'force-dynamic';
 
 function isE2EHarnessEnabled(): boolean {
-  // Always enable in this environment for e2e testing
-  return true;
+  // Only enable in development or when E2E_HARNESS is set
+  return process.env.NODE_ENV !== 'production' || process.env.E2E_HARNESS === '1';
 }
 
 export default async function TransactionStatesPage() {

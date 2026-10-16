@@ -13,36 +13,21 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export type EvidenceType = 'link' | 'text' | 'image' | 'video' | 'document' | 'onchain';
-
-export interface EvidenceSource {
-  id: string;
-  type: EvidenceType;
-  title: string;
-  value: string;
-  description?: string;
-  submittedBy?: string;
-  submittedAt?: string;
-  verified?: boolean;
-  verificationTxHash?: string;
-  chainId?: number;
-  blockNumber?: number;
-  /** IPFS hash or content hash for integrity verification. */
-  contentHash?: string;
-  /** Whether the evidence is disputed. */
-  disputed?: boolean;
-  /** Dispute reason if disputed. */
-  disputeReason?: string;
-}
-
-const TYPE_CONFIG: Record<EvidenceType, { icon: React.ReactNode; label: string; tone: string }> = {
-  link: { icon: <Link2 size={14} aria-hidden="true" />, label: 'Link', tone: 'text-blue-400' },
-  text: { icon: <FileText size={14} aria-hidden="true" />, label: 'Text', tone: 'text-slate-400' },
-  image: { icon: <Image size={14} aria-hidden="true" />, label: 'Image', tone: 'text-green-400' },
-  video: { icon: <Video size={14} aria-hidden="true" />, label: 'Video', tone: 'text-purple-400' },
-  document: { icon: <FileText size={14} aria-hidden="true" />, label: 'Document', tone: 'text-amber-400' },
-  onchain: { icon: <Shield size={14} aria-hidden="true" />, label: 'On-chain', tone: 'text-emerald-400' },
+export const EXPLORER_CONFIG: Record<number, { name: string; txUrl: (hash: string) => string; blockUrl: (block: number) => string }> = {
+  1: { name: 'Ethereum Mainnet', txUrl: (h) => `https://etherscan.io/tx/${h}`, blockUrl: (b) => `https://etherscan.io/block/${b}` },
+  5: { name: 'Ethereum Goerli', txUrl: (h) => `https://goerli.etherscan.io/tx/${h}`, blockUrl: (b) => `https://goerli.etherscan.io/block/${b}` },
+  10: { name: 'Optimism Mainnet', txUrl: (h) => `https://optimistic.etherscan.io/tx/${h}`, blockUrl: (b) => `https://optimistic.etherscan.io/block/${b}` },
+  420: { name: 'Optimism Goerli', txUrl: (h) => `https://goerli-optimism.etherscan.io/tx/${h}`, blockUrl: (b) => `https://goerli-optimism.etherscan.io/block/${b}` },
+  42161: { name: 'Arbitrum One', txUrl: (h) => `https://arbiscan.io/tx/${h}`, blockUrl: (b) => `https://arbiscan.io/block/${b}` },
+  421613: { name: 'Arbitrum Goerli', txUrl: (h) => `https://goerli.arbiscan.io/tx/${h}`, blockUrl: (b) => `https://goerli.arbiscan.io/block/${b}` },
+  11155111: { name: 'Ethereum Sepolia', txUrl: (h) => `https://sepolia.etherscan.io/tx/${h}`, blockUrl: (b) => `https://sepolia.etherscan.io/block/${b}` },
+  11155420: { name: 'Optimism Sepolia', txUrl: (h) => `https://sepolia-optimism.etherscan.io/tx/${h}`, blockUrl: (b) => `https://sepolia-optimism.etherscan.io/block/${b}` },
 };
+
+function getExplorerForChain(chainId: number | undefined): { name: string; txUrl: (hash: string) => string; blockUrl: (block: number) => string } | null {
+  if (!chainId) return null;
+  return EXPLORER_CONFIG[chainId] ?? null;
+}
 
 export interface EvidenceSourcesListProps {
   /** Array of evidence sources. */
@@ -272,15 +257,38 @@ function EvidenceSourceItem({
   onClick?: (source: EvidenceSource) => void;
   renderValue?: (source: EvidenceSource) => React.ReactNode;
 }) {
-  const typeConfig = TYPE_CONFIG[source.type];
-  const itemId = React.useId();
+  const explorer = getExplorerForChain(source.chainId);
 
-  const handleClick = () => onClick?.(source);
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handleClick();
-    }
+  const renderTxLink = () => {
+    if (!source.verificationTxHash || !explorer) return null;
+    return (
+      <a
+        href={explorer.txUrl(source.verificationTxHash)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1 hover:underline"
+        aria-label={`View transaction ${source.verificationTxHash.slice(0, 10)}… on ${explorer.name}`}
+      >
+        <ExternalLink size={10} aria-hidden="true" />
+        <span className="font-mono">Tx: {source.verificationTxHash.slice(0, 10)}…</span>
+      </a>
+    );
+  };
+
+  const renderBlockLink = () => {
+    if (!source.blockNumber || !explorer) return null;
+    return (
+      <a
+        href={explorer.blockUrl(source.blockNumber)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-1 hover:underline"
+        aria-label={`View block ${source.blockNumber} on ${explorer.name}`}
+      >
+        <ExternalLink size={10} aria-hidden="true" />
+        <span className="font-mono">Block {source.blockNumber.toString()}</span>
+      </a>
+    );
   };
 
   const content = (
@@ -358,25 +366,8 @@ function EvidenceSourceItem({
 
             {showOnChainDetails && source.type === 'onchain' && (
               <>
-                {source.verificationTxHash && (
-                  <a
-                    href={`https://sepolia-optimism.etherscan.io/tx/${source.verificationTxHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label={`View transaction ${source.verificationTxHash.slice(0, 10)}… on explorer`}
-                  >
-                    <ExternalLink size={10} aria-hidden="true" />
-                    <span className="font-mono">Tx: {source.verificationTxHash.slice(0, 10)}…</span>
-                  </a>
-                )}
-                {source.blockNumber && (
-                  <span className="flex items-center gap-1 font-mono">
-                    <span aria-hidden="true">⛓</span>
-                    <span>Block {source.blockNumber.toString()}</span>
-                  </span>
-                )}
+                {renderTxLink()}
+                {renderBlockLink()}
               </>
             )}
           </div>
